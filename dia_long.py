@@ -188,7 +188,8 @@ def process_chunk(
     temperature: float = 1.3,
     top_p: float = 0.95,
     max_tokens: Optional[int] = None,
-    speed_factor: float = 1.0,
+    speed_factor: float = 0.94,  # Default to slightly slower for more natural speech
+    cfg_filter_top_k: int = 30,  # Add cfg_filter_top_k parameter with default from app.py
     retry_count: int = 3,
     verbose: bool = False
 ) -> str:
@@ -205,6 +206,7 @@ def process_chunk(
         top_p: Top-p sampling parameter
         max_tokens: Maximum tokens per generation
         speed_factor: Speed factor (lower is slower)
+        cfg_filter_top_k: Top k filter for CFG guidance
         retry_count: Number of retries on failure
         verbose: Print verbose output
         
@@ -215,8 +217,9 @@ def process_chunk(
     skip_intro = "__NO_INTRO_MUSIC__" in text
     text = text.replace("__NO_INTRO_MUSIC__", "")
     
-    # If we want to skip the intro, we could add special handling here
-    # This could include modifying the model parameters or text prompt
+    # Ensure text has proper speaker tags (following app.py example)
+    if not text.strip().startswith("[S1]") and not text.strip().startswith("[S2]"):
+        text = f"[S1] {text}"
     
     for attempt in range(retry_count):
         try:
@@ -228,6 +231,7 @@ def process_chunk(
                 cfg_scale=cfg_scale,
                 temperature=temperature,
                 top_p=top_p,
+                cfg_filter_top_k=cfg_filter_top_k,  # Pass cfg_filter_top_k to model
                 verbose=verbose
             )
             
@@ -277,8 +281,10 @@ def main():
     parser.add_argument("--cfg-scale", type=float, default=3.0, help="Classifier-free guidance scale")
     parser.add_argument("--temperature", type=float, default=1.3, help="Sampling temperature")
     parser.add_argument("--top-p", type=float, default=0.95, help="Top-p sampling parameter")
-    parser.add_argument("--speed-factor", type=float, default=1.0, 
+    parser.add_argument("--speed-factor", type=float, default=0.94, 
                        help="Speech speed factor (lower is slower, e.g., 0.9 for 10%% slower)")
+    parser.add_argument("--cfg-filter-top-k", type=int, default=30, 
+                       help="Top k filter for CFG guidance (controls generation quality)")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--retry-count", type=int, default=3, help="Number of retries on generation failure")
     parser.add_argument("--verbose", action="store_true", help="Print verbose output")
@@ -356,6 +362,7 @@ def main():
             top_p=args.top_p,
             max_tokens=args.max_tokens,
             speed_factor=args.speed_factor,
+            cfg_filter_top_k=args.cfg_filter_top_k,
             retry_count=args.retry_count,
             verbose=args.verbose
         )
