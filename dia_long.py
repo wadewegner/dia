@@ -147,6 +147,38 @@ def combine_audio_files(files: List[str], output_file: str, sample_rate: int = 4
     return output_file
 
 
+def adjust_audio_speed(audio: np.ndarray, speed_factor: float, verbose: bool = False) -> np.ndarray:
+    """
+    Adjust the speed of audio by resampling.
+    
+    Args:
+        audio: Input audio array
+        speed_factor: Speed factor (lower is slower, e.g., 0.9 = 10% slower)
+        verbose: Print verbose output
+        
+    Returns:
+        Speed-adjusted audio array
+    """
+    # Ensure speed_factor is positive and not excessively small/large to avoid issues
+    speed_factor = max(0.1, min(speed_factor, 5.0))
+    original_len = len(audio)
+    # Target length based on speed_factor - lower value = longer audio = slower speech
+    target_len = int(original_len / speed_factor)
+    
+    # Only interpolate if length changes and is valid
+    if target_len != original_len and target_len > 0:
+        x_original = np.arange(original_len)
+        x_resampled = np.linspace(0, original_len - 1, target_len)
+        adjusted_audio = np.interp(x_resampled, x_original, audio).astype(np.float32)
+        
+        if verbose:
+            print(f"Applied speed factor {speed_factor}: audio length changed from {original_len} to {target_len} samples ({100*(1-speed_factor):.1f}% slower)")
+        
+        return adjusted_audio
+    
+    return audio
+
+
 def process_chunk(
     model: Dia,
     text: str,
@@ -156,6 +188,7 @@ def process_chunk(
     temperature: float = 1.3,
     top_p: float = 0.95,
     max_tokens: Optional[int] = None,
+    speed_factor: float = 1.0,
     retry_count: int = 3,
     verbose: bool = False
 ) -> str:
@@ -171,6 +204,7 @@ def process_chunk(
         temperature: Sampling temperature
         top_p: Top-p sampling parameter
         max_tokens: Maximum tokens per generation
+        speed_factor: Speed factor (lower is slower)
         retry_count: Number of retries on failure
         verbose: Print verbose output
         
@@ -196,6 +230,10 @@ def process_chunk(
                 top_p=top_p,
                 verbose=verbose
             )
+            
+            # Apply speed adjustment if needed
+            if speed_factor != 1.0:
+                output_audio = adjust_audio_speed(output_audio, speed_factor, verbose)
             
             # Save audio to file
             sf.write(output_path, output_audio, 44100)
@@ -239,6 +277,8 @@ def main():
     parser.add_argument("--cfg-scale", type=float, default=3.0, help="Classifier-free guidance scale")
     parser.add_argument("--temperature", type=float, default=1.3, help="Sampling temperature")
     parser.add_argument("--top-p", type=float, default=0.95, help="Top-p sampling parameter")
+    parser.add_argument("--speed-factor", type=float, default=1.0, 
+                       help="Speech speed factor (lower is slower, e.g., 0.9 for 10%% slower)")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--retry-count", type=int, default=3, help="Number of retries on generation failure")
     parser.add_argument("--verbose", action="store_true", help="Print verbose output")
@@ -315,6 +355,7 @@ def main():
             temperature=args.temperature,
             top_p=args.top_p,
             max_tokens=args.max_tokens,
+            speed_factor=args.speed_factor,
             retry_count=args.retry_count,
             verbose=args.verbose
         )
