@@ -4,13 +4,22 @@ import time
 from pathlib import Path
 import soundfile as sf
 from dia.model import Dia
+import torch
 
 # Create output directory if it doesn't exist
 os.makedirs("audio_outputs", exist_ok=True)
 
 # Initialize model
 print("Loading Dia model...")
-model = Dia.from_pretrained("nari-labs/Dia-1.6B", device="cuda", compute_dtype="float16")
+# Check if CUDA is available
+if torch.cuda.is_available():
+    print("CUDA is available! Using GPU.")
+    device = "cuda"
+else:
+    print("CUDA is not available. Using CPU instead.")
+    device = "cpu"
+    
+model = Dia.from_pretrained("nari-labs/Dia-1.6B", device=device, compute_dtype="float16")
 print("Model loaded successfully!")
 
 def generate_speech(text, audio_prompt=None, cfg_scale=3.0, temperature=1.3, top_p=0.95, seed=None):
@@ -51,7 +60,7 @@ def generate_speech(text, audio_prompt=None, cfg_scale=3.0, temperature=1.3, top
             cfg_scale=cfg_scale,
             temperature=temperature,
             top_p=top_p,
-            use_torch_compile=True,
+            use_torch_compile=torch.cuda.is_available(),  # Only use compile on CUDA
             verbose=True
         )
         
@@ -108,7 +117,7 @@ with gr.Blocks(title="Dia Speech Generator") as app:
                     audio_prompt = gr.Audio(label="Audio Prompt (optional, for voice cloning)", type="filepath")
                 
             with gr.Column(scale=2):
-                output_audio = gr.Audio(label="Generated Speech", interactive=False)
+                output_audio = gr.Audio(label="Generated Speech", interactive=False, type="filepath", autoplay=True)
                 output_message = gr.Textbox(label="Status")
     
     with gr.Tab("Audio Player"):
@@ -116,7 +125,11 @@ with gr.Blocks(title="Dia Speech Generator") as app:
             refresh_btn = gr.Button("Refresh Audio List")
             audio_files = gr.Dropdown(choices=list_audio_files(), label="Select Audio File")
         
-        selected_audio = gr.Audio(label="Selected Audio")
+        selected_audio = gr.Audio(label="Selected Audio", type="filepath", autoplay=True)
+        gr.Markdown("#### Troubleshooting")
+        gr.Markdown("- If you can't hear audio, try clicking the download button above the player")
+        gr.Markdown("- You can also try refreshing your browser or using a different browser")
+        gr.Markdown("- Make sure your volume is turned up")
     
     # Events
     generate_btn.click(
@@ -142,6 +155,14 @@ with gr.Blocks(title="Dia Speech Generator") as app:
         inputs=[audio_files],
         outputs=[selected_audio]
     )
+
+# Display a message about the server
+print("\nStarting Gradio server...")
+print("The interface will be available at:")
+print("  - Local URL: http://127.0.0.1:7860")
+print("  - Public URL will be displayed below (if enabled)")
+print("\nIf you're running this on a remote server, make sure to use SSH port forwarding:")
+print("  ssh -L 7860:localhost:7860 your-server-username@your-server-ip\n")
 
 # Launch the app with a public URL
 app.launch(server_name="0.0.0.0", share=True) 
